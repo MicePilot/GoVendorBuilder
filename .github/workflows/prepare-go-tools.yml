@@ -7,7 +7,7 @@ on:
       go-version:
         description: '要使用的 Go 版本 (例如: 1.26.0)'
         required: true
-        default: '1.63.0'
+        default: '1.26.0'
       target-os:
         description: '目标操作系统'
         required: true
