@@ -31,25 +31,6 @@ on:
         default: false
         type: boolean
 
-env:
-  # 工具列表 - 包含所有 VS Code Go 扩展需要的工具
-  GO_TOOLS: |
-    golang.org/x/tools/gopls@latest
-    github.com/go-delve/delve/cmd/dlv@latest
-    github.com/ramya-rao-a/go-outline@latest
-    github.com/uudashr/gopkgs/v2/cmd/gopkgs@latest
-    honnef.co/go/tools/cmd/staticcheck@latest
-    golang.org/x/lint/golint@latest
-    golang.org/x/tools/cmd/goimports@latest
-    github.com/fatih/gomodifytags@latest
-    github.com/josharian/impl@latest
-    github.com/haya14busa/goplay/cmd/goplay@latest
-    github.com/cweill/gotests/gotests@latest
-    github.com/rogpeppe/godef@latest
-    golang.org/x/tools/cmd/guru@latest
-    github.com/sqs/goreturns@latest
-    github.com/stamblerre/gocode@latest
-
 jobs:
   prepare-offline-tools:
     name: 准备离线 Go 工具
@@ -91,11 +72,33 @@ jobs:
           go env -w GOPROXY=https://goproxy.cn,direct
           go env -w GOSUMDB=sum.golang.google.cn
           
+          # 使用多行字符串定义工具列表
+          tools=$(cat <<EOF
+          golang.org/x/tools/gopls@latest
+          github.com/go-delve/delve/cmd/dlv@latest
+          github.com/ramya-rao-a/go-outline@latest
+          github.com/uudashr/gopkgs/v2/cmd/gopkgs@latest
+          honnef.co/go/tools/cmd/staticcheck@latest
+          golang.org/x/lint/golint@latest
+          golang.org/x/tools/cmd/goimports@latest
+          github.com/fatih/gomodifytags@latest
+          github.com/josharian/impl@latest
+          github.com/haya14busa/goplay/cmd/goplay@latest
+          github.com/cweill/gotests/gotests@latest
+          github.com/rogpeppe/godef@latest
+          golang.org/x/tools/cmd/guru@latest
+          github.com/sqs/goreturns@latest
+          github.com/stamblerre/gocode@latest
+          EOF
+          )
+          
           # 逐一下载每个工具
-          for tool in ${{ env.GO_TOOLS }}; do
-            echo "正在下载: $tool"
-            go install $tool
-          done
+          while IFS= read -r tool; do
+            if [[ -n "$tool" ]]; then
+              echo "正在下载: $tool"
+              go install "$tool"
+            fi
+          done <<< "$tools"
           
           echo "所有工具下载完成！"
           
