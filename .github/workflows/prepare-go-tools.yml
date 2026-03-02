@@ -30,7 +30,11 @@ on:
         required: false
         default: false
         type: boolean
-
+# 设置工作流运行所需的最小权限
+permissions:
+  contents: read   # 拉取代码
+  packages: write  # 用于上传缓存（如果启用）
+  
 jobs:
   prepare-offline-tools:
     name: 准备离线 Go 工具
@@ -139,3 +143,10 @@ jobs:
             -H "content-type: application/json" \
             -H "accept: application/json;api-version=6.1-preview.1" \
             -d
+      - name: 上传 Vendor 目录制品
+        if: success() # 仅在之前所有步骤成功时执行
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-offline-tools-${{ inputs.target-os }}-${{ inputs.target-arch }}
+          path: offline-go-tools/
+          retention-days: 7
