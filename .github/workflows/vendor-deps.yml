@@ -1,0 +1,50 @@
+name: Vendor Go Dependencies
+
+on:
+  workflow_dispatch: # 允许手动触发此工作流
+    inputs:
+      repository:
+        description: '要处理的 Go 项目仓库地址 (格式: owner/repo)'
+        required: true
+        default: '当前仓库'
+      ref:
+        description: '分支、标签或提交 SHA'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read   # 用于拉取代码
+  packages: write  # 用于上传制品（如果启用）
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.repository != '当前仓库' && github.event.inputs.repository || '' }}
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: './go.mod' # 自动从项目的 go.mod 文件中检测所需 Go 版本
+          cache: true # 启用依赖缓存，基于 go.mod 文件哈希
+
+      - name: Vendor Dependencies
+        run: go mod vendor
+        # 此命令会根据 go.mod 文件，将所有依赖的源代码下载到 ./vendor 目录
+
+      - name: List Vendored Contents (验证)
+        run: |
+          echo "依赖已打包至 vendor 目录，内容摘要："
+          du -sh vendor/
+          ls vendor/ | head -20
+
+      - name: Upload Vendor Directory as Artifact (可选)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendored-dependencies
+          path: vendor/
+          retention-days: 7
