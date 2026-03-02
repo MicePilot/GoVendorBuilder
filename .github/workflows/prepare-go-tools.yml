@@ -1,0 +1,138 @@
+name: 准备离线 Go 开发工具链
+
+on:
+  # 手动触发，允许指定参数
+  workflow_dispatch:
+    inputs:
+      go-version:
+        description: '要使用的 Go 版本 (例如: 1.26.0)'
+        required: true
+        default: '1.63.0'
+      target-os:
+        description: '目标操作系统'
+        required: true
+        default: 'linux'
+        type: choice
+        options:
+          - linux
+          - darwin
+          - windows
+      target-arch:
+        description: '目标架构'
+        required: true
+        default: 'amd64'
+        type: choice
+        options:
+          - amd64
+          - arm64
+      include-vscode-ext:
+        description: '是否包含 VS Code Go 扩展'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # 工具列表 - 包含所有 VS Code Go 扩展需要的工具
+  GO_TOOLS: |
+    golang.org/x/tools/gopls@latest
+    github.com/go-delve/delve/cmd/dlv@latest
+    github.com/ramya-rao-a/go-outline@latest
+    github.com/uudashr/gopkgs/v2/cmd/gopkgs@latest
+    honnef.co/go/tools/cmd/staticcheck@latest
+    golang.org/x/lint/golint@latest
+    golang.org/x/tools/cmd/goimports@latest
+    github.com/fatih/gomodifytags@latest
+    github.com/josharian/impl@latest
+    github.com/haya14busa/goplay/cmd/goplay@latest
+    github.com/cweill/gotests/gotests@latest
+    github.com/rogpeppe/godef@latest
+    golang.org/x/tools/cmd/guru@latest
+    github.com/sqs/goreturns@latest
+    github.com/stamblerre/gocode@latest
+
+jobs:
+  prepare-offline-tools:
+    name: 准备离线 Go 工具
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          path: workspace
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: 显示环境信息
+        run: |
+          echo "Go 版本: $(go version)"
+          echo "GOOS: ${{ inputs.target-os }}"
+          echo "GOARCH: ${{ inputs.target-arch }}"
+          echo "GOPATH: $(go env GOPATH)"
+          echo "GOCACHE: $(go env GOCACHE)"
+
+      - name: 创建输出目录
+        run: |
+          mkdir -p offline-go-tools/bin
+          mkdir -p offline-go-tools/install-scripts
+          echo "工具准备时间: $(date)" > offline-go-tools/README.txt
+
+      - name: 下载 Go 工具链
+        env:
+          GOOS: ${{ inputs.target-os }}
+          GOARCH: ${{ inputs.target-arch }}
+        run: |
+          echo "开始下载 Go 工具链..."
+          
+          # 设置代理以加速下载（如果需要）
+          go env -w GOPROXY=https://goproxy.cn,direct
+          go env -w GOSUMDB=sum.golang.google.cn
+          
+          # 逐一下载每个工具
+          for tool in ${{ env.GO_TOOLS }}; do
+            echo "正在下载: $tool"
+            go install $tool
+          done
+          
+          echo "所有工具下载完成！"
+          
+          # 记录已安装的工具
+          ls -la $(go env GOPATH)/bin/ > offline-go-tools/installed-tools.txt
+
+      - name: 复制工具到输出目录
+        run: |
+          echo "复制工具文件..."
+          
+          # 复制所有二进制文件
+          cp -r $(go env GOPATH)/bin/* offline-go-tools/bin/ 2>/dev/null || true
+          
+          # 设置执行权限（针对 Linux/macOS）
+          if [[ "${{ inputs.target-os }}" != "windows" ]]; then
+            chmod +x offline-go-tools/bin/*
+          fi
+          
+          # 记录工具信息
+          echo "=== 工具列表 ===" > offline-go-tools/tools-info.txt
+          for tool in offline-go-tools/bin/*; do
+            if [[ -f "$tool" ]] && [[ -x "$tool" || "${{ inputs.target-os }}" == "windows" ]]; then
+              tool_name=$(basename "$tool")
+              echo "- $tool_name" >> offline-go-tools/tools-info.txt
+            fi
+          done
+
+      - name: 下载 VS Code Go 扩展（可选）
+        if: ${{ inputs.include-vscode-ext }}
+        run: |
+          echo "下载 VS Code Go 扩展..."
+          mkdir -p offline-go-tools/vscode-extensions
+          
+          # 获取最新的 VS Code Go 扩展
+          # 这里需要从 VS Code Marketplace API 获取，以下为示例
+          EXTENSION_ID="golang.go"
+          LATEST_VERSION=$(curl -s "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery" \
+            -H "content-type: application/json" \
+            -H "accept: application/json;api-version=6.1-preview.1" \
+            -d
