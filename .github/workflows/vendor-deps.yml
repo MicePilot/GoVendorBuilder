@@ -1,50 +1,80 @@
-name: Vendor Go Dependencies
+name: 打包 Go 项目依赖 (Vendor Dependencies)
 
 on:
-  workflow_dispatch: # 允许手动触发此工作流
+  # 配置为“手动触发”工作流，以便灵活指定目标仓库和版本
+  workflow_dispatch:
     inputs:
       repository:
-        description: '要处理的 Go 项目仓库地址 (格式: owner/repo)'
+        description: '目标 Go 项目仓库地址 (格式: owner/repo)'
         required: true
-        default: '当前仓库'
+        default: '' # 留空则代表处理当前仓库自身
       ref:
-        description: '分支、标签或提交 SHA'
+        description: '要拉取的分支、标签或提交 SHA'
         required: false
         default: 'main'
+      go-version:
+        description: |
+          要使用的 Go 工具链版本。
+          - 示例1（精确版本）: '1.23.0'
+          - 示例2（最新稳定版）: 'stable'
+          - 示例3（上个稳定版）: 'oldstable'
+          - 示例4（语义化范围）: '~1.22.0'
+          注意：根据 setup-go 的文档，为免 YAML 解析问题，版本号应使用引号包裹（此处输入字符串即可）。
+          如果此项留空，工作流将自动从目标项目的 go.mod 文件中检测所需版本。
+        required: false
+        default: ''
 
+# 设置工作流运行所需的最小权限
 permissions:
-  contents: read   # 用于拉取代码
-  packages: write  # 用于上传制品（如果启用）
+  contents: read   # 拉取代码
+  packages: write  # 用于上传缓存（如果启用）
 
 jobs:
   vendor:
-    runs-on: ubuntu-latest
+    name: Vendor Dependencies
+    runs-on: ubuntu-latest # 在最新的 Ubuntu 运行器上执行
     steps:
-      - name: Checkout Repository
+      # 步骤 1: 拉取指定仓库的源代码
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.inputs.repository != '当前仓库' && github.event.inputs.repository || '' }}
+          # 如果输入了外部仓库地址，则拉取该仓库；否则拉取当前仓库
+          repository: ${{ github.event.inputs.repository }}
           ref: ${{ github.event.inputs.ref }}
 
-      - name: Set up Go
+      # 步骤 2: 设置 Go 开发环境
+      - name: 设置 Go
+        id: setup-go
         uses: actions/setup-go@v4
         with:
-          go-version-file: './go.mod' # 自动从项目的 go.mod 文件中检测所需 Go 版本
-          cache: true # 启用依赖缓存，基于 go.mod 文件哈希
+          # 版本解析逻辑（遵循 setup-go 文档定义的优先级）:
+          # 1. 如果用户手动输入了 go-version，则优先使用它。
+          # 2. 如果用户未输入，则回退到从项目的 go.mod 文件中自动检测。
+          go-version: ${{ inputs.go-version }}
+          go-version-file: ${{ !inputs.go-version && './go.mod' || '' }}
+          # 启用依赖缓存，基于 go.mod 文件哈希，可显著加速后续运行
+          cache: true
 
-      - name: Vendor Dependencies
+      # 步骤 3: 执行依赖打包命令
+      - name: 打包依赖 (go mod vendor)
         run: go mod vendor
-        # 此命令会根据 go.mod 文件，将所有依赖的源代码下载到 ./vendor 目录
+        # 此命令会读取 go.mod 和 go.sum，将所有依赖的源代码下载到项目根目录的 ./vendor 文件夹中
 
-      - name: List Vendored Contents (验证)
+      # 步骤 4: (可选) 验证打包结果
+      - name: 验证打包结果
         run: |
-          echo "依赖已打包至 vendor 目录，内容摘要："
+          echo "✅ 依赖打包完成！"
+          echo "使用的 Go 版本: $(go version)"
+          echo "Vendor 目录大小:"
           du -sh vendor/
+          echo "主要依赖项列表 (前20个):"
           ls vendor/ | head -20
 
-      - name: Upload Vendor Directory as Artifact (可选)
+      # 步骤 5: (可选) 将打包好的 vendor 目录上传为工作流制品，可供下载
+      - name: 上传 Vendor 目录制品
+        if: success() # 仅在之前所有步骤成功时执行
         uses: actions/upload-artifact@v4
         with:
-          name: vendored-dependencies
+          name: vendored-dependencies-${{ github.run_id }}
           path: vendor/
           retention-days: 7
